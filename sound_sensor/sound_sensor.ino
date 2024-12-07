@@ -8,19 +8,20 @@ void setup() {
     // For Pin 3, we set the corresponding bit in the DDRD register for input mode
     DDRD &= ~(1 << PD3);  // Set PD3 (Pin 3) as input (clear bit)
     PORTD |= (1 << PD3);  // Enable the internal pull-up resistor on Pin 3
+
+    ADMUX = (1 << REFS0);                // Use AVcc as reference voltage
+    ADCSRA = (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
 }
 
 float readAnalogValue(uint8_t pin) {
     // Select the input pin by setting the ADMUX register appropriately
-    ADMUX = (1 << REFS0) | (pin & 0x0F);
-    
-    // Start the ADC conversion
-    ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);
-    
-    // Wait for the conversion to finish
-    while (ADCSRA & (1 << ADSC));
+    ADMUX = (ADMUX & 0xF0) | (pin & 0x0F);
 
-    // Return the analog value as a voltage (scaled to 0-5V)
+    // Start ADC conversion
+    ADCSRA |= (1 << ADSC);
+    while (ADCSRA & (1 << ADSC)); // Wait for conversion to complete
+
+    // Return analog value (scaled voltage)
     return ADC * (5.0 / 1023.0);
 }
 
