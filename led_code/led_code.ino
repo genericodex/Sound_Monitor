@@ -1,29 +1,28 @@
-#include <avr/io.h>
-#include <util/delay.h>
-
-#define LED_PIN PB0  // Pin 8 for LED
+#define LED_PIN PB0 // Pin 8 for LED
 
 void setup() {
-    // Set up LED pin as output
-    DDRB |= (1 << LED_PIN); // Set PB0 (Pin 8) as output
+    Serial.begin(9600);
+    Serial.println("Slave: LED Arduino Initialized");
 
-    // Initialize SPI
-    DDRB |= (1 << PB4);              // MISO as output
-    SPCR = (1 << SPE) | (1 << SPIE); // Enable SPI and SPI interrupt
-
-    sei(); // Enable global interrupts
+    DDRB |= (1 << LED_PIN); // LED pin as output
+    DDRB &= ~(1 << PB4);    // MISO as input
+    SPCR = (1 << SPE);      // Enable SPI in Slave mode
 }
 
-// SPI interrupt service routine
 ISR(SPI_STC_vect) {
-    char received = SPDR; // Read the data received
-    if (received == 'O') {
-        PORTB |= (1 << LED_PIN); // Turn on LED (HIGH)
-    } else if (received == 'F') {
-        PORTB &= ~(1 << LED_PIN); // Turn off LED (LOW)
+    char command = SPDR; // Read received command
+    Serial.print("Received command: ");
+    Serial.println(command);
+
+    if (command == 'O') {
+        PORTB |= (1 << LED_PIN); // Turn on LED
+        Serial.println("LED ON");
+    } else if (command == 'F') {
+        PORTB &= ~(1 << LED_PIN); // Turn off LED
+        Serial.println("LED OFF");
     }
 }
 
 void loop() {
-    // The ISR handles LED control
+    // Handled by ISR
 }
