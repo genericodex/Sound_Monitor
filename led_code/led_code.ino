@@ -1,21 +1,29 @@
-void setup() {
-    Serial.begin(9600);  // Initialize Serial communication
+#include <avr/io.h>
+#include <util/delay.h>
 
-    // Set PB0 (Pin 8) as output for LED
-    DDRB |= (1 << PB0);
+#define LED_PIN PB0  // Pin 8 for LED
+
+void setup() {
+    // Set up LED pin as output
+    DDRB |= (1 << LED_PIN); // Set PB0 (Pin 8) as output
+
+    // Initialize SPI
+    DDRB |= (1 << PB4);              // MISO as output
+    SPCR = (1 << SPE) | (1 << SPIE); // Enable SPI and SPI interrupt
+
+    sei(); // Enable global interrupts
+}
+
+// SPI interrupt service routine
+ISR(SPI_STC_vect) {
+    char received = SPDR; // Read the data received
+    if (received == 'O') {
+        PORTB |= (1 << LED_PIN); // Turn on LED (HIGH)
+    } else if (received == 'F') {
+        PORTB &= ~(1 << LED_PIN); // Turn off LED (LOW)
+    }
 }
 
 void loop() {
-    if (Serial.available() > 0) {
-        String message = Serial.readStringUntil('\n');
-
-        // Parse the message to extract the voltage level
-        float soundLevel = message.toFloat();
-
-        if (soundLevel > 3.0) { // Example threshold for high sound level
-            PORTB |= (1 << PB0);  // Turn on LED
-        } else {
-            PORTB &= ~(1 << PB0); // Turn off LED
-        }
-    }
+    // The ISR handles LED control
 }
