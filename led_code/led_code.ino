@@ -1,28 +1,28 @@
-#define LED_PIN PB0 // Pin 8 for LED
+#define LED_PIN PB0 // LED connected to PB0
 
 void setup() {
-    Serial.begin(9600);
-    Serial.println("Slave: LED Arduino Initialized");
+    // Set LED pin as output
+    DDRB |= (1 << LED_PIN); 
+    
+    // SPI Setup in Slave Mode
+    DDRB |= (1 << PB4);              // MISO as output
+    SPCR = (1 << SPE) | (1 << SPIE); // Enable SPI and SPI interrupt
 
-    DDRB |= (1 << LED_PIN); // LED pin as output
-    DDRB &= ~(1 << PB4);    // MISO as input
-    SPCR = (1 << SPE);      // Enable SPI in Slave mode
+    // Enable Global Interrupts
+    sei();
 }
 
+// SPI Interrupt Service Routine
 ISR(SPI_STC_vect) {
-    char command = SPDR; // Read received command
-    Serial.print("Received command: ");
-    Serial.println(command);
-
+    char command = SPDR; // Read received data
+    
     if (command == 'O') {
-        PORTB |= (1 << LED_PIN); // Turn on LED
-        Serial.println("LED ON");
+        PORTB |= (1 << LED_PIN); // Turn ON LED
     } else if (command == 'F') {
-        PORTB &= ~(1 << LED_PIN); // Turn off LED
-        Serial.println("LED OFF");
+        PORTB &= ~(1 << LED_PIN); // Turn OFF LED
     }
 }
 
 void loop() {
-    // Handled by ISR
+    // Main loop is empty; LED control handled via ISR
 }

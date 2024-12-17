@@ -1,75 +1,65 @@
-#define SOUND_SENSOR_PIN A0
+#define SOUND_SENSOR_PIN 0 // ADC0 Pin
 #define SOUND_THRESHOLD 2.5 // Voltage threshold
 
-// SPI pins for Master
-#define SS_LCD_PIN 10 // Slave Select for LCD Arduino
-#define SS_LED_PIN 9  // Slave Select for LED Arduino
-#define SS_SWITCH_PIN 8 // Slave Select for Switch Arduino
+// SPI Slave Select Pins (on PORTB)
+#define SS_LCD_PIN PB2   // Slave Select for LCD (Pin 10)
+#define SS_LED_PIN PB1   // Slave Select for LED (Pin 9)
+#define SS_SWITCH_PIN PB0 // Slave Select for Switch (Pin 8)
 
 void setup() {
-    Serial.begin(9600);
-    Serial.println("Master: KY-038 Sensor Initialized");
+    // Serial Setup
+    UBRR0 = 103; // 9600 baud rate for 16 MHz clock
+    UCSR0B |= (1 << TXEN0); // Enable UART TX
 
-    // SPI Master setup
-    pinMode(SS_LCD_PIN, OUTPUT);
-    pinMode(SS_LED_PIN, OUTPUT);
-    pinMode(SS_SWITCH_PIN, OUTPUT);
-    digitalWrite(SS_LCD_PIN, HIGH); // Deselect LCD Slave
-    digitalWrite(SS_LED_PIN, HIGH); // Deselect LED Slave
-    digitalWrite(SS_SWITCH_PIN, HIGH); // Deselect Switch Slave
+    // SPI Setup as Master
+    DDRB |= (1 << SS_LCD_PIN) | (1 << SS_LED_PIN) | (1 << SS_SWITCH_PIN); // SS pins as output
+    PORTB |= (1 << SS_LCD_PIN) | (1 << SS_LED_PIN) | (1 << SS_SWITCH_PIN); // Deselect slaves
+    
+    DDRB |= (1 << PB3) | (1 << PB5); // MOSI (PB3) and SCK (PB5) as output
+    DDRB &= ~(1 << PB4); // MISO as input
+    SPCR = (1 << SPE) | (1 << MSTR) | (1 << SPR0); // Enable SPI, Master mode, Clock = fosc/16
 
-    pinMode(11, OUTPUT); // MOSI
-    pinMode(12, INPUT);  // MISO
-    pinMode(13, OUTPUT); // SCK
-
-    SPCR = (1 << SPE) | (1 << MSTR) | (1 << SPR0); // Enable SPI as Master
+    // ADC Setup for Analog Input
+    ADMUX = (1 << REFS0); // AVcc with external capacitor at AREF pin
+    ADCSRA = (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Enable ADC, prescaler 128
 }
 
-void sendToSlave(uint8_t slavePin, const char* data) {
-    digitalWrite(slavePin, LOW); // Select slave
+float readADC(uint8_t channel) {
+    ADMUX = (ADMUX & 0xF0) | (channel & 0x0F); // Select ADC channel
+    ADCSRA |= (1 << ADSC); // Start conversion
+    while (ADCSRA & (1 << ADSC)); // Wait for conversion to complete
+    return ADC * (5.0 / 1023.0); // Return voltage value
+}
+
+void sendToSlave(volatile uint8_t *slavePORT, uint8_t slavePin, const char *data) {
+    *slavePORT &= ~(1 << slavePin); // Select slave
     for (int i = 0; data[i] != '\0'; i++) {
-        SPDR = data[i]; // Load data into SPI Data Register
+        SPDR = data[i]; // Start SPI transfer
         while (!(SPSR & (1 << SPIF))); // Wait for transfer to complete
-        Serial.print(data[i]); // Debugging
     }
-    Serial.println(" -> Sent");
-    digitalWrite(slavePin, HIGH); // Deselect slave
+    *slavePORT |= (1 << slavePin); // Deselect slave
 }
 
-void sendToLCD(const char* data) {
-    Serial.println(data);  // Send data to LCD Arduino via Serial
+void sendToLCD(const char *data) {
+    for (int i = 0; data[i] != '\0'; i++) {
+        while (!(UCSR0A & (1 << UDRE0))); // Wait for empty transmit buffer
+        UDR0 = data[i]; // Send character
+    }
 }
 
 void loop() {
-    // Read analog sensor value
-    float analogValue = analogRead(SOUND_SENSOR_PIN) * (5.0 / 1023.0);
-    Serial.print("Analog value: ");
-    Serial.println(analogValue);
-
-    // Send data to LCD Arduino
+    float analogValue = readADC(SOUND_SENSOR_PIN);
+    
     char lcdData[16];
     dtostrf(analogValue, 6, 2, lcdData);
     sendToLCD(lcdData);
 
     // Send control signal to LED Arduino
     if (analogValue > SOUND_THRESHOLD) {
-        sendToSlave(SS_LED_PIN, "O"); // "O" for LED ON
-    // sendToSlave(SS_LCD_PIN, "G");
-        Serial.println("Threshold reached: LED ON");
+        sendToSlave(&PORTB, SS_LED_PIN, "O"); // LED ON
     } else {
-        sendToSlave(SS_LED_PIN, "F"); // "F" for LED OFF
-    // sendToSlave(SS_LCD_PIN, "H");
-        Serial.println("Threshold not reached: LED OFF");
+        sendToSlave(&PORTB, SS_LED_PIN, "F"); // LED OFF
     }
-
-    // Request switch state from Switch Arduino
-    sendToSlave(SS_SWITCH_PIN, "C");
-    _delay_ms(100); // Synchronizing delay
-    if (SPDR == '1') {
-        Serial.println("Switch Arduino: Switch is ON");
-    } else if (SPDR == '0') {
-        Serial.println("Switch Arduino: Switch is OFF");
-    }
-
-    delay(500); // Delay before next cycle
+    
+    _delay_ms(500);
 }
